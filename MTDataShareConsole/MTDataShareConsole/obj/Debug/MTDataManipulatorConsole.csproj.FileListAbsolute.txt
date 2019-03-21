@@ -1,0 +1,6 @@
+C:\Users\Gizem\source\repos\MTDataManipulatorConsole\MTDataManipulatorConsole\bin\Debug\MTDataManipulatorConsole.exe.config
+C:\Users\Gizem\source\repos\MTDataManipulatorConsole\MTDataManipulatorConsole\bin\Debug\MTDataManipulatorConsole.exe
+C:\Users\Gizem\source\repos\MTDataManipulatorConsole\MTDataManipulatorConsole\bin\Debug\MTDataManipulatorConsole.pdb
+C:\Users\Gizem\source\repos\MTDataManipulatorConsole\MTDataManipulatorConsole\obj\Debug\MTDataManipulatorConsole.csproj.CoreCompileInputs.cache
+C:\Users\Gizem\source\repos\MTDataManipulatorConsole\MTDataManipulatorConsole\obj\Debug\MTDataManipulatorConsole.exe
+C:\Users\Gizem\source\repos\MTDataManipulatorConsole\MTDataManipulatorConsole\obj\Debug\MTDataManipulatorConsole.pdb

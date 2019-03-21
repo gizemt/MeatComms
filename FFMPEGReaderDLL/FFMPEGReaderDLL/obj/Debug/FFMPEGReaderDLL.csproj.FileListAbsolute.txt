@@ -1,0 +1,5 @@
+C:\Users\Gizem\source\repos\FFMPEGReaderDLL\FFMPEGReaderDLL\bin\Debug\FFMPEGReaderDLL.dll
+C:\Users\Gizem\source\repos\FFMPEGReaderDLL\FFMPEGReaderDLL\bin\Debug\FFMPEGReaderDLL.pdb
+C:\Users\Gizem\source\repos\FFMPEGReaderDLL\FFMPEGReaderDLL\obj\Debug\FFMPEGReaderDLL.csproj.CoreCompileInputs.cache
+C:\Users\Gizem\source\repos\FFMPEGReaderDLL\FFMPEGReaderDLL\obj\Debug\FFMPEGReaderDLL.dll
+C:\Users\Gizem\source\repos\FFMPEGReaderDLL\FFMPEGReaderDLL\obj\Debug\FFMPEGReaderDLL.pdb

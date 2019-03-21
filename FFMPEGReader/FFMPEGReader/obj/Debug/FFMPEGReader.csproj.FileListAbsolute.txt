@@ -1,0 +1,7 @@
+c:\users\gizem\source\repos\FFMPEGReader\FFMPEGReader\bin\Debug\FFMPEGReader.exe.config
+c:\users\gizem\source\repos\FFMPEGReader\FFMPEGReader\bin\Debug\FFMPEGReader.exe
+c:\users\gizem\source\repos\FFMPEGReader\FFMPEGReader\bin\Debug\FFMPEGReader.pdb
+c:\users\gizem\source\repos\FFMPEGReader\FFMPEGReader\obj\Debug\FFMPEGReader.csproj.CoreCompileInputs.cache
+c:\users\gizem\source\repos\FFMPEGReader\FFMPEGReader\obj\Debug\FFMPEGReader.exe
+c:\users\gizem\source\repos\FFMPEGReader\FFMPEGReader\obj\Debug\FFMPEGReader.pdb
+C:\Users\Gizem\source\repos\FFMPEGReader\FFMPEGReader\obj\Debug\FFMPEGReader.csprojAssemblyReference.cache

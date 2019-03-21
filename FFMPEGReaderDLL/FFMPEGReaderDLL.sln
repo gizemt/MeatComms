@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.28307.438
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FFMPEGReaderDLL", "FFMPEGReaderDLL\FFMPEGReaderDLL.csproj", "{42DCE1BD-EB47-4AAA-99E4-FD0B9D77913D}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{42DCE1BD-EB47-4AAA-99E4-FD0B9D77913D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{42DCE1BD-EB47-4AAA-99E4-FD0B9D77913D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{42DCE1BD-EB47-4AAA-99E4-FD0B9D77913D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{42DCE1BD-EB47-4AAA-99E4-FD0B9D77913D}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {95F716A8-C90B-4BB5-BC69-FDD7B0FF8C67}
+	EndGlobalSection
+EndGlobal
