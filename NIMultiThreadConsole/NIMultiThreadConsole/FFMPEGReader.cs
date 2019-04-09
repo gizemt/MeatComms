@@ -18,7 +18,8 @@ namespace NIMultiThreadConsole
         public int read_cnt = 1;
 
 
-        int NUM_READ = 128;
+        int NUM_READ = 1024;
+        public int EMPTY_LENGTH = 4096;
         public int BUFFER_SIZE = 8192;
 
         public Boolean done_flag = false;
@@ -92,6 +93,7 @@ namespace NIMultiThreadConsole
                         // int cnt = 0;
                         int local_last_idx = fmpReader.last_idx;
                         int local_buffer_end = fmpReader.buffer_end;
+                        var watch = System.Diagnostics.Stopwatch.StartNew();
 
 
                         // Debug.WriteLine(progReader.ReadLine());
@@ -116,7 +118,21 @@ namespace NIMultiThreadConsole
                             // {
                             if (local_last_idx + NUM_READ <= BUFFER_SIZE)
                             {
+                                // var bytes = dataReader.ReadBytes(NUM_READ);
+                                // Buffer.BlockCopy(bytes, 0, fmpReader.data_from_ffmpeg, local_last_idx, NUM_READ);
+                                // local_last_idx += bytes.Length;
+                                watch.Restart();
+                                
+                                // char[] bytes = new char[NUM_READ];
+                                // var n_read = dataReader.Read(bytes, 0, NUM_READ);
+                                // Buffer.BlockCopy(bytes, 0, fmpReader.data_from_ffmpeg, local_last_idx, n_read);
+                                // local_last_idx += n_read;
                                 local_last_idx += dataReader.Read(fmpReader.data_from_ffmpeg, local_last_idx, NUM_READ);
+
+                                watch.Stop();
+                                Debug.WriteLine("[FFMPEGREADER]: {0} ms = {1} ticks", watch.ElapsedMilliseconds, watch.ElapsedTicks);
+                                
+                                
                                 // Debug.WriteLine("[FFMPEG] Data read until {0}.", local_last_idx);
                                 // now = DateTime.Now;
                                 // File.AppendAllText(@"DebugFFMPEG.txt", now.TimeOfDay.ToString() + "[FFMPEG] Data read until " + local_last_idx.ToString() + Environment.NewLine);
@@ -131,7 +147,18 @@ namespace NIMultiThreadConsole
                                 local_buffer_end = local_last_idx;
                                 fmpReader.read_cnt += 1;
 
+                                // var bytes = dataReader.ReadBytes(NUM_READ);
+                                // Buffer.BlockCopy(bytes, 0, fmpReader.data_from_ffmpeg, 0, NUM_READ);
+                                // local_last_idx = bytes.Length;
+                                watch.Restart();
+                                
+                                // char[] bytes = new char[NUM_READ];
+                                // local_last_idx = dataReader.Read(bytes, 0, NUM_READ);
+                                // Buffer.BlockCopy(bytes, 0, fmpReader.data_from_ffmpeg, 0, local_last_idx);
                                 local_last_idx = dataReader.Read(fmpReader.data_from_ffmpeg, 0, NUM_READ);
+                                watch.Stop();
+                                Debug.WriteLine("[FFMPEGREADER]: {0} ms = {1} ticks", watch.ElapsedMilliseconds, watch.ElapsedTicks);
+
                                 Debug.WriteLine("[FFMPEG] Finished at {0}, read until {1} into the beginning.", local_buffer_end, local_last_idx);
                                 fmpReader.last_idx = local_last_idx;
                                 
@@ -245,29 +272,40 @@ namespace NIMultiThreadConsole
             {
                 // https://stackoverflow.com/questions/4431568/variable-initalisation-in-while-loop
                 // Debug.WriteLine("[FFPLAY] Waiting");
-                while ((last_checked = fmpReader.last_idx) <= prev_write_end) ;
-                // Debug.WriteLine("[FFPLAY] Not waiting");
-                byte[] d = new byte[last_checked - prev_write_end + 1];
-                Buffer.BlockCopy(fmpReader.data_from_ffmpeg, prev_write_end, d, 0, last_checked - prev_write_end + 1);
-                // Array.Copy(fmpReader.data_from_ffmpeg, prev_write_end, d, 0, last_checked - prev_write_end + 1);
-                // Debug.WriteLine("[FFPLAY] Copied {0} points starting from {1}", last_checked - prev_write_end + 1, prev_write_end);
-                // DateTime now = DateTime.Now;
-                // File.AppendAllText(@"DebugFFPLAY.txt", now.TimeOfDay.ToString() + "[FFPLAY] Copied " + Environment.NewLine);
-                // dataWriter.Write(mt.data_to_ffplay, prev_write_end, last_checked - prev_write_end);
-
-                if (last_checked + NUM_READ > BUFFER_SIZE)
+                // while ((last_checked = fmpReader.last_idx) <= prev_write_end) ;
+                byte[] d;
+                int lc;
+                if ((lc = fmpReader.last_idx) <= prev_write_end)
                 {
-                    prev_write_end = 0;
-                    // last_checked = 0;
-                    while ((n_cycle == fmpReader.read_cnt)) ;
-                    n_cycle++;
-                    // while (!(mt.last_idx < last_checked)) ;
+                    d = new byte[EMPTY_LENGTH];
                 }
                 else
                 {
-                    prev_write_end = last_checked;
+                    last_checked = lc;
+                    // Debug.WriteLine("[FFPLAY] Not waiting");
+                    d = new byte[last_checked - prev_write_end + 1];
+                    Buffer.BlockCopy(fmpReader.data_from_ffmpeg, prev_write_end, d, 0, last_checked - prev_write_end + 1);
+                    // Array.Copy(fmpReader.data_from_ffmpeg, prev_write_end, d, 0, last_checked - prev_write_end + 1);
+                    // Debug.WriteLine("[FFPLAY] Copied {0} points starting from {1}", last_checked - prev_write_end + 1, prev_write_end);
+                    // DateTime now = DateTime.Now;
+                    // File.AppendAllText(@"DebugFFPLAY.txt", now.TimeOfDay.ToString() + "[FFPLAY] Copied " + Environment.NewLine);
+                    // dataWriter.Write(mt.data_to_ffplay, prev_write_end, last_checked - prev_write_end);
+
+                    if (last_checked + NUM_READ > BUFFER_SIZE)
+                    {
+                        prev_write_end = 0;
+                        // last_checked = 0;
+                        while ((n_cycle == fmpReader.read_cnt)) ;
+                        n_cycle++;
+                        // while (!(mt.last_idx < last_checked)) ;
+                    }
+                    else
+                    {
+                        prev_write_end = last_checked;
+                    }
+                    fmpReader.done_flag = true;
                 }
-                fmpReader.done_flag = true;
+                    
                 return d;
             }
             catch (Exception e)

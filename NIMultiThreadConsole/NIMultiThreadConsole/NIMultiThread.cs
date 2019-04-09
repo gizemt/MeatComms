@@ -20,7 +20,7 @@ namespace NIMultiThreadConsole
 
         
 
-        double M = 2;
+        double M = 4;
         double fsym_tx = 1e5;
         double fs_tx = 5e6;
         double fc = 13e5;
@@ -122,24 +122,32 @@ namespace NIMultiThreadConsole
                     watch.Restart();
                     d = ffmpegReader.read_from_buffer(ref prev_write_end, ref last_checked, ref n_cycle);
                     watch.Stop();
-                    Debug.WriteLine("read_from_buffer Execution Time: {0} ms = {1} ticks", watch.ElapsedMilliseconds, watch.ElapsedTicks);
+                    double[] waveform;
+                    Debug.WriteLine("read_from_buffer Execution Time: {0} ms = {1} ticks = {2} samples/tick", watch.ElapsedMilliseconds, watch.ElapsedTicks, (d.Length * (8 / M) * (fs_tx / fsym_tx))/watch.ElapsedTicks);
+                    if (d.Length == ffmpegReader.EMPTY_LENGTH)
+                    {
+                        waveform = new double[(int)(ffmpegReader.EMPTY_LENGTH * (8 / M) * (fs_tx / fsym_tx))];
+                    }
+                    else
+                    {
+                        Debug.WriteLine("[ML] Bytes read from FFMPEG. Length = {0} bytes, = {1} samples", d.Length, d.Length * (8 / M) * (fs_tx / fsym_tx));
+                        // T2.5 - Use Matlab script to generate TX data
+                        watch.Restart();
+                        mtx.generate_tx_data(d, max_waveform_size);
+                        watch.Stop();
+                        Debug.WriteLine("generate_tx_data Execution Time: {0} ms = {1} ticks", watch.ElapsedMilliseconds, watch.ElapsedTicks);
 
-                    Debug.WriteLine("[ML] Bytes read from FFMPEG. Length = {0} bytes, = {1} samples", d.Length, d.Length * (8 / M) * (fs_tx / fsym_tx));
-                    // T2.5 - Use Matlab script to generate TX data
-                    watch.Restart();
-                    mtx.generate_tx_data(d, max_waveform_size);
-                    watch.Stop();
-                    Debug.WriteLine("generate_tx_data Execution Time: {0} ms = {1} ticks", watch.ElapsedMilliseconds, watch.ElapsedTicks);
+                        watch.Restart();
+                        var len = mtx.output_data.GetLength(1);
+                        waveform = new double[len];
+                        Buffer.BlockCopy(mtx.output_data, 0, waveform, 0, len * sizeof(double));
+                        // var waveform = (mtx.output_data).OfType<double>().ToArray();
+                        watch.Stop();
+                        Debug.WriteLine("Convert array Execution Time: {0} ms = {1} ticks", watch.ElapsedMilliseconds, watch.ElapsedTicks);
 
-                    watch.Restart();
-                    var len = mtx.output_data.GetLength(1);
-                    var waveform = new double[len];
-                    Buffer.BlockCopy(mtx.output_data, 0, waveform, 0, len * sizeof(double));
-                    // var waveform = (mtx.output_data).OfType<double>().ToArray();
-                    watch.Stop();
-                    Debug.WriteLine("Convert array Execution Time: {0} ms = {1} ticks", watch.ElapsedMilliseconds, watch.ElapsedTicks);
-
-                    Debug.WriteLine("[ML] TX data generated");
+                        Debug.WriteLine("[ML] TX data generated");
+                    }
+                    
                     // T2.6 - Send that data to AWG with NIFGEN
                     
                     if (total_sent + waveform.Length < max_waveform_size)
