@@ -85,7 +85,7 @@ namespace NIMultiThreadConsole
 
                 // T2.2 - Initialize parameters for reading from ffmpeg buffer
                 byte[] d;
-                
+                bool read_zeros;
                 int prev_write_end = 0;
                 int last_checked = 0;
                 int n_cycle = 1;
@@ -123,13 +123,14 @@ namespace NIMultiThreadConsole
                     d = ffmpegReader.read_from_buffer(ref prev_write_end, ref last_checked, ref n_cycle);
                     watch.Stop();
                     double[] waveform;
-                    Debug.WriteLine("read_from_buffer Execution Time: {0} ms = {1} ticks = {2} samples/tick", watch.ElapsedMilliseconds, watch.ElapsedTicks, (d.Length * (8 / M) * (fs_tx / fsym_tx))/watch.ElapsedTicks);
                     if (d.Length == ffmpegReader.EMPTY_LENGTH)
                     {
                         waveform = new double[(int)(ffmpegReader.EMPTY_LENGTH * (8 / M) * (fs_tx / fsym_tx))];
+                        read_zeros = true;
                     }
                     else
                     {
+                        Debug.WriteLine("read_from_buffer Execution Time: {0} ms = {1} ticks = {2} samples/tick", watch.ElapsedMilliseconds, watch.ElapsedTicks, (d.Length * (8 / M) * (fs_tx / fsym_tx)) / watch.ElapsedTicks);
                         Debug.WriteLine("[ML] Bytes read from FFMPEG. Length = {0} bytes, = {1} samples", d.Length, d.Length * (8 / M) * (fs_tx / fsym_tx));
                         // T2.5 - Use Matlab script to generate TX data
                         watch.Restart();
@@ -146,6 +147,7 @@ namespace NIMultiThreadConsole
                         Debug.WriteLine("Convert array Execution Time: {0} ms = {1} ticks", watch.ElapsedMilliseconds, watch.ElapsedTicks);
 
                         Debug.WriteLine("[ML] TX data generated");
+                        read_zeros = false;
                     }
                     
                     // T2.6 - Send that data to AWG with NIFGEN
@@ -157,7 +159,7 @@ namespace NIMultiThreadConsole
                         watch.Restart();
                         niFgenObj.WriteWaveform(NIFGEN_CHANNEL_NAME, waveform_handle, waveform.Length, waveform);
                         watch.Stop();
-                        Debug.WriteLine("Write1 Execution Time: {0} ms = {1} ticks", watch.ElapsedMilliseconds, watch.ElapsedTicks);
+                        Debug.WriteLine("Write Execution Time: {0} ms = {1} ticks", watch.ElapsedMilliseconds, watch.ElapsedTicks);
 
                         total_sent += waveform.Length;
                     }
@@ -175,12 +177,20 @@ namespace NIMultiThreadConsole
                         watch.Restart();
                         niFgenObj.WriteWaveform(NIFGEN_CHANNEL_NAME, waveform_handle, waveform.Length, waveform);
                         watch.Stop();
-                        Debug.WriteLine("Write2 Execution Time: {0} ms = {1} ticks", watch.ElapsedMilliseconds, watch.ElapsedTicks);
+                        Debug.WriteLine("Write buffer is full. Moving to the beginning.");
+                        Debug.WriteLine("Write Execution Time: {0} ms = {1} ticks", watch.ElapsedMilliseconds, watch.ElapsedTicks);
 
                         total_sent = waveform.Length;
                     }
-
-                    Debug.WriteLine("[NIFGEN] Waveform #{0} is written, length {1}", write_cnt, waveform.Length);
+                    if (read_zeros)
+                    {
+                        Debug.WriteLine("[NIFGEN] Waveform #{0} - {1} 0's is written", write_cnt, waveform.Length);
+                    }
+                    else
+                    {
+                        Debug.WriteLine("[NIFGEN] Waveform #{0} is written, length {1}", write_cnt, waveform.Length);
+                    }
+                    
                     write_cnt += 1;
                 }
                 niFgenObj.AbortGeneration();
