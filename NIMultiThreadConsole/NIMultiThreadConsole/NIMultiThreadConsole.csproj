@@ -45,6 +45,7 @@
     <Compile Include="MatlabTXRX.cs" />
     <Compile Include="niFgen.cs" />
     <Compile Include="NIMultiThread.cs" />
+    <Compile Include="niScope.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

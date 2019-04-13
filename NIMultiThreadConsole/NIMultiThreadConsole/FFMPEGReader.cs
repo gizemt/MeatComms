@@ -64,7 +64,9 @@ namespace NIMultiThreadConsole
             ffmpegProcess = new Process();
             ProcessStartInfo ffmpegStartInfo = new ProcessStartInfo();
             ffmpegStartInfo.FileName = "C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe";
-            ffmpegStartInfo.Arguments = "-y -f dshow -framerate 10 -i video=\"Logitech Webcam C925e\" -vf scale=160:120 -vcodec h264 -an -f nut pipe:1";
+            // ffmpegStartInfo.Arguments = "-y -f dshow -framerate 10 -i video=\"Logitech Webcam C925e\" -vf scale=160:120 -vcodec h264 -an -f nut pipe:1";
+            ffmpegStartInfo.Arguments = "-y -f dshow -framerate 10 -i video=\"Logitech Webcam C925e\" -vf scale=960:720 -vcodec h264 -an -f nut pipe:1";
+            
             ffmpegStartInfo.RedirectStandardError = false; // FFMPEG progress updates
             ffmpegStartInfo.RedirectStandardOutput = true; // FFMPEG data
             ffmpegStartInfo.RedirectStandardInput = false;
@@ -130,7 +132,7 @@ namespace NIMultiThreadConsole
                                 local_last_idx += dataReader.Read(fmpReader.data_from_ffmpeg, local_last_idx, NUM_READ);
 
                                 watch.Stop();
-                                Debug.WriteLine("[FFMPEGREADER]: {0} ms = {1} ticks", watch.ElapsedMilliseconds, watch.ElapsedTicks);
+                                // Debug.WriteLine("[FFMPEGREADER]: {0} ms = {1} ticks", watch.ElapsedMilliseconds, watch.ElapsedTicks);
                                 
                                 
                                 // Debug.WriteLine("[FFMPEG] Data read until {0}.", local_last_idx);
@@ -143,7 +145,7 @@ namespace NIMultiThreadConsole
                             {
                                 //lock (mt)
                                 //{
-                                Debug.WriteLine("[FFMPEG] Buffer full, moving to the beginning.");
+                                // Debug.WriteLine("[FFMPEG] Buffer full, moving to the beginning.");
                                 local_buffer_end = local_last_idx;
                                 fmpReader.read_cnt += 1;
 
@@ -157,9 +159,9 @@ namespace NIMultiThreadConsole
                                 // Buffer.BlockCopy(bytes, 0, fmpReader.data_from_ffmpeg, 0, local_last_idx);
                                 local_last_idx = dataReader.Read(fmpReader.data_from_ffmpeg, 0, NUM_READ);
                                 watch.Stop();
-                                Debug.WriteLine("[FFMPEGREADER]: {0} ms = {1} ticks", watch.ElapsedMilliseconds, watch.ElapsedTicks);
+                                // Debug.WriteLine("[FFMPEGREADER]: {0} ms = {1} ticks", watch.ElapsedMilliseconds, watch.ElapsedTicks);
 
-                                Debug.WriteLine("[FFMPEG] Finished at {0}, read until {1} into the beginning.", local_buffer_end, local_last_idx);
+                                // Debug.WriteLine("[FFMPEG] Finished at {0}, read until {1} into the beginning.", local_buffer_end, local_last_idx);
                                 fmpReader.last_idx = local_last_idx;
                                 
                                 //}
@@ -235,7 +237,7 @@ namespace NIMultiThreadConsole
             } */
         }
 
-        private void FFPLAYStart(out Process ffplayProcess)
+        public void FFPLAYStart(out Process ffplayProcess)
         {
             ffplayProcess = new Process();
             ProcessStartInfo ffplayStartInfo = new ProcessStartInfo();
@@ -331,14 +333,14 @@ namespace NIMultiThreadConsole
             while (!fmpReader.done_flag) ;
             try
             {
-                DateTime now = DateTime.Now;
-                File.AppendAllText(@"DebugFFPLAY.txt", now.TimeOfDay.ToString() + "d " + d.ToString()+ Environment.NewLine);
+                // DateTime now = DateTime.Now;
+                // File.AppendAllText(@"DebugFFPLAY.txt", now.TimeOfDay.ToString() + "d " + d.ToString()+ Environment.NewLine);
                 if (d != null)
                 {
                     fmpReader.dataWriter.Write(d);
                     // Debug.WriteLine("[FFPLAY] Sent");
-                    now = DateTime.Now;
-                    File.AppendAllText(@"DebugFFPLAY.txt", now.TimeOfDay.ToString() + "[FFPLAY] Sent" + Environment.NewLine);
+                    // now = DateTime.Now;
+                    // File.AppendAllText(@"DebugFFPLAY.txt", now.TimeOfDay.ToString() + "[FFPLAY] Sent" + Environment.NewLine);
 
                     /* if (mt.ffplayOutReader.Peek() > -1)
                     {
