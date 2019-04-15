@@ -31,12 +31,16 @@ namespace MatlabConsole
             //{
             mtx = new MatlabTXRX();
             mtx.create_matlab_instance("C:\\Users\\Gizem\\Box\\Research\\Projects\\MeatComms\\Experiments\\C#");
-            // public void initalize_tx(double M, double fsym_tx, double fs_tx, double fc)
-            mtx.initalize_tx(2.0, 10.0, 20.0, 0.0);
 
+            // mtx.test_struct_pass();
+            
+            mtx.initalize_tx(2.0, 10.0, 20.0, 0.0);
+            
             byte[] input_data = { 1, 2, 3, 1, 2, 4, 5};//, 3, 2, 4, 6, 2, 5, 6, 7, 4, 3 };
                 
             mtx.generate_tx_data(input_data);
+
+
             /*
             Debug.WriteLine(mtx.output_data.Length);
             Debug.WriteLine(mtx.excess_output.Length);
@@ -76,6 +80,26 @@ namespace MatlabConsole
             Debug.WriteLine(e.Source);
         } */
 
+        }
+        private void test_struct_pass()
+        {
+            object obj_struct_out;
+            matlab.Feval("test_struct_out", 1, out obj_struct_out, 1, 2, 3);
+            object[] res_out = obj_struct_out as object[];
+            Debug.WriteLine(res_out);
+
+            object obj_struct_in;
+            matlab.Feval("test_struct_in", 3, out obj_struct_in, obj_struct_out);
+            object[] res = obj_struct_in as object[];
+            Debug.WriteLine(res[0]);
+            Debug.WriteLine(res[1]);
+            Debug.WriteLine(res[2]);
+        }
+        public struct rx_params
+        {
+            public int s1;
+            public int s2;
+            public int s3;
         }
 
         public void create_matlab_instance(string directory)
