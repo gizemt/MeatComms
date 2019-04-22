@@ -11,15 +11,17 @@ namespace NIMultiThreadConsole
     public class FFMPEGReader
     {
 
-        byte[] data_from_ffmpeg;
+        static byte[] data_from_ffmpeg;
         // byte[] data_to_ffplay;
         int buffer_end = 0;
         int last_idx = 0;
         public int read_cnt = 1;
+        public bool send_webcam_data;
+        public int tx_byte_range;
 
 
         int NUM_READ = 1024;
-        public int EMPTY_LENGTH = 2048;
+        public int EMPTY_LENGTH = 512;
         public int BUFFER_SIZE = 8192;
 
         public Boolean done_flag = false;
@@ -83,7 +85,7 @@ namespace NIMultiThreadConsole
             // ffmpegProcess.OutputDataReceived += (o, e) => Debug.WriteLine(e.Data ?? "NULL", "ffplay");
             // ffmpegProcess.ErrorDataReceived += (o, e) => Debug.WriteLine(e.Data ?? "NULL", "ffplay");
             // ffmpegProcess.Exited += (o, e) => Debug.WriteLine("Exited", "fp");
-            fmpReader.data_from_ffmpeg = new byte[fmpReader.BUFFER_SIZE];
+            data_from_ffmpeg = new byte[fmpReader.BUFFER_SIZE];
             try
             {
                 // Data reader
@@ -123,15 +125,15 @@ namespace NIMultiThreadConsole
                                 // var bytes = dataReader.ReadBytes(NUM_READ);
                                 // Buffer.BlockCopy(bytes, 0, fmpReader.data_from_ffmpeg, local_last_idx, NUM_READ);
                                 // local_last_idx += bytes.Length;
-                                watch.Restart();
+                                // watch.Restart();
                                 
                                 // char[] bytes = new char[NUM_READ];
                                 // var n_read = dataReader.Read(bytes, 0, NUM_READ);
                                 // Buffer.BlockCopy(bytes, 0, fmpReader.data_from_ffmpeg, local_last_idx, n_read);
                                 // local_last_idx += n_read;
-                                local_last_idx += dataReader.Read(fmpReader.data_from_ffmpeg, local_last_idx, NUM_READ);
+                                local_last_idx += dataReader.Read(data_from_ffmpeg, local_last_idx, NUM_READ);
 
-                                watch.Stop();
+                                // watch.Stop();
                                 // Debug.WriteLine("[FFMPEGREADER]: {0} ms = {1} ticks", watch.ElapsedMilliseconds, watch.ElapsedTicks);
                                 
                                 
@@ -152,13 +154,13 @@ namespace NIMultiThreadConsole
                                 // var bytes = dataReader.ReadBytes(NUM_READ);
                                 // Buffer.BlockCopy(bytes, 0, fmpReader.data_from_ffmpeg, 0, NUM_READ);
                                 // local_last_idx = bytes.Length;
-                                watch.Restart();
+                                // watch.Restart();
                                 
                                 // char[] bytes = new char[NUM_READ];
                                 // local_last_idx = dataReader.Read(bytes, 0, NUM_READ);
                                 // Buffer.BlockCopy(bytes, 0, fmpReader.data_from_ffmpeg, 0, local_last_idx);
-                                local_last_idx = dataReader.Read(fmpReader.data_from_ffmpeg, 0, NUM_READ);
-                                watch.Stop();
+                                local_last_idx = dataReader.Read(data_from_ffmpeg, 0, NUM_READ);
+                                // watch.Stop();
                                 // Debug.WriteLine("[FFMPEGREADER]: {0} ms = {1} ticks", watch.ElapsedMilliseconds, watch.ElapsedTicks);
 
                                 // Debug.WriteLine("[FFMPEG] Finished at {0}, read until {1} into the beginning.", local_buffer_end, local_last_idx);
@@ -267,7 +269,7 @@ namespace NIMultiThreadConsole
 
         }
 
-        public byte[] read_from_buffer(ref int prev_write_end, ref int last_checked, ref int n_cycle)
+        public byte[] read_from_buffer(ref int prev_write_end, ref int last_checked, ref int n_cycle, out bool read_zeros)
         {
             fmpReader.done_flag = false;
             try
@@ -277,22 +279,39 @@ namespace NIMultiThreadConsole
                 // while ((last_checked = fmpReader.last_idx) <= prev_write_end) ;
                 byte[] d;
                 int lc;
+                // while ((lc = fmpReader.last_idx) <= prev_write_end) ;
                 if ((lc = fmpReader.last_idx) <= prev_write_end)
                 {
                     d = new byte[EMPTY_LENGTH];
+                    read_zeros = true;
                 }
                 else
                 {
                     last_checked = lc;
                     // Debug.WriteLine("[FFPLAY] Not waiting");
                     d = new byte[last_checked - prev_write_end + 1];
-                    Buffer.BlockCopy(fmpReader.data_from_ffmpeg, prev_write_end, d, 0, last_checked - prev_write_end + 1);
+                    if (send_webcam_data)
+                    {
+                        Buffer.BlockCopy(data_from_ffmpeg, prev_write_end, d, 0, (last_checked - prev_write_end + 1));
+                    }
+                    else
+                    {
+                        for (int i = 0; i < last_checked - prev_write_end + 1; i++)
+                        {
+                            d[i] = (byte) (i % tx_byte_range);
+                        }
+                    }
+                    // for (int i = 0; i < last_checked - prev_write_end + 1; i++)
+                    // {
+                    //     d[i] = (byte) (i % 48);
+                    // }
+                    
                     // Array.Copy(fmpReader.data_from_ffmpeg, prev_write_end, d, 0, last_checked - prev_write_end + 1);
                     // Debug.WriteLine("[FFPLAY] Copied {0} points starting from {1}", last_checked - prev_write_end + 1, prev_write_end);
                     // DateTime now = DateTime.Now;
                     // File.AppendAllText(@"DebugFFPLAY.txt", now.TimeOfDay.ToString() + "[FFPLAY] Copied " + Environment.NewLine);
                     // dataWriter.Write(mt.data_to_ffplay, prev_write_end, last_checked - prev_write_end);
-
+                    read_zeros = false;
                     if (last_checked + NUM_READ > BUFFER_SIZE)
                     {
                         prev_write_end = 0;
@@ -322,6 +341,7 @@ namespace NIMultiThreadConsole
                 // fmpReader.FFMPEGtoFFPLAY.Abort();
                 fmpReader.done_flag = true;
                 fmpReader.program_end = true;
+                read_zeros = false;
                 return null;
             }
 

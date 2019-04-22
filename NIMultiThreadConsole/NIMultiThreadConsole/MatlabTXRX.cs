@@ -21,12 +21,15 @@ namespace NIMultiThreadConsole
         double sps_tx         ;    
         double[] qammod_lookup_real ;
         double[] qammod_lookup_imag ;
-        double[] rc_filt_tx;     
+        double[] rc_filt_tx;
+        
         // int max_waveform_size;
 
-        public double[,] output_data;
-        double[,] excess_output;
-        double t_end = 0;
+        // public double[,] output_data;
+        public double[,] excess_output;
+        double[,] set_aside_real;
+        double[,] set_aside_imag;
+        // double t_end = 0;
         /*
         public MatlabTXRX(double M, double fsym_tx, double fs_tx, double fc)
         {
@@ -111,6 +114,8 @@ namespace NIMultiThreadConsole
             block_copy((double[,])tx_init_obj[3], out this.qammod_lookup_imag);
             // this.qammod_lookup_imag = (double[,])tx_init_obj[3];
             block_copy((double[,])tx_init_obj[4], out this.rc_filt_tx);
+            set_aside_real = new double[1, this.rc_filt_tx.Length-1];
+            set_aside_imag = new double[1, this.rc_filt_tx.Length - 1];
             // this.rc_filt_tx = (double[,])tx_init_obj[4];
             // this.max_waveform_size = max_waveform_size;
 
@@ -121,14 +126,15 @@ namespace NIMultiThreadConsole
             waveform = new double[len];
             Buffer.BlockCopy(data, 0, waveform, 0, len * sizeof(double));
         }
-        public void generate_tx_data(byte[] input_data, int max_waveform_size)
+        public double[] generate_tx_data(byte[] input_data, bool first_start, int max_waveform_size, ref double t_end)
         {
             object res = null;
             // input_data, M, Ts_tx, sps_tx, fc, qammod_lookup_real, qammod_lookup_imag, rc_filt_tx,  excess_output, t_end, max_waveform_size
-            matlab.Feval("NIMultiThread_MATLAB_TX", 3, out res, input_data, this.M, this.Ts_tx, this.sps_tx, this.fc, this.qammod_lookup_real, this.qammod_lookup_imag, this.rc_filt_tx, this.excess_output, this.t_end, max_waveform_size);
+            matlab.Feval("NIMultiThread_MATLAB_TX", 5, out res, input_data, this.M, this.Ts_tx, this.sps_tx, this.fc, this.qammod_lookup_real, this.qammod_lookup_imag, this.rc_filt_tx, first_start, this.excess_output, this.set_aside_real, this.set_aside_imag, t_end, max_waveform_size);
             object[] tx_out_obj = res as object[];
             double[,] od;
-            if (tx_out_obj[0] is double){
+            if (tx_out_obj[0] is double)
+            {
                 od = new double[1, 1];
                 od[0, 0] = (double)tx_out_obj[0];
             }
@@ -136,7 +142,10 @@ namespace NIMultiThreadConsole
             {
                 od = (double[,])tx_out_obj[0];
             }
-            this.output_data = od;
+            //this.output_data = od;
+            var len = od.GetLength(1);
+            double[] output_data = new double[len];
+            Buffer.BlockCopy(od, 0, output_data, 0, len * sizeof(double));
             double[,] exd;
             if (tx_out_obj[1] is double)
             {
@@ -148,9 +157,13 @@ namespace NIMultiThreadConsole
                 exd = (double[,])tx_out_obj[1];
             }
             this.excess_output = exd;
+            this.set_aside_real = (double[,])tx_out_obj[2];
+            this.set_aside_imag = (double[,])tx_out_obj[3];
             // output_data = matlab.GetVariable("output_data", "base");
             // excess_output = matlab.GetVariable("excess_output", "base");
-            this.t_end = (double)tx_out_obj[2];
+            t_end = (double)tx_out_obj[4];
+            // Debug.WriteLine(t_end);
+            return output_data;
 
         }
 

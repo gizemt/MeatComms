@@ -13,36 +13,36 @@ namespace NIMultiThreadConsole
         static NIMultiThread niMT;
         static NIMultiThread niMT2;
         
-        niFgen niFgenObj;
-        niScope niScopeObj;
+        static niFgen niFgenObj;
+        static niScope niScopeObj;
         static Thread threadFFMPEG;
         static Thread threadTX;
         static Thread threadRX;
         static FFMPEGReader ffmpegReader;// = new FFMPEGReader();
         static MatlabTXRX mtx;
 
-        double M = 4;
-        double fsym_tx = 5e5;
-        double fs_tx = 5e6;
-        double fc = 13e5;
-        double fs_rx = 10e6;
+        static bool nifgen_configured = false;
 
-        double[] niscope_data;
-        byte[] nifgen_symbols; // symbols
+        static double M = 2;
+        static double fsym_tx = 1e5;
+        static double fs_tx = 5e6;
+        static double fc = 13e5;
+        static double fs_rx = 5e6;
+
+        
+        public static bool webcam_bool = true;
+        public static int byte_range = 0;
+
+        
+        
 
         bool nifgen_initiated;
-        bool niscope_initiated;
+        // bool niscope_initiated;
          
         static void Main()
         {
             try
             {
-                // T1 - FFMPEG Thread
-                // T1.1 - Start FFMPEG
-                ffmpegReader = new FFMPEGReader();
-                threadFFMPEG = new Thread(() => ffmpegReader.FFMPEGThread());
-                threadFFMPEG.Start();
-                Debug.WriteLine("threadFFMPEG started");
                 
 
                 // T2 - TX Thread
@@ -51,6 +51,13 @@ namespace NIMultiThreadConsole
                 threadTX = new Thread(() => niMT.TXThread());
                 threadTX.Start();
                 Debug.WriteLine("threadTX started");
+
+                // T1 - FFMPEG Thread
+                // T1.1 - Start FFMPEG
+                ffmpegReader = new FFMPEGReader();
+                threadFFMPEG = new Thread(() => ffmpegReader.FFMPEGThread());
+                threadFFMPEG.Start();
+                Debug.WriteLine("threadFFMPEG started");
 
                 // T3 - RX Thread
                 niMT2 = new NIMultiThread();
@@ -75,9 +82,12 @@ namespace NIMultiThreadConsole
             int max_waveform_size;
             int total_sent = 0;
             int write_cnt = 0;
-
-            nifgen_symbols = new byte[307200];
+            byte[] nifgen_symbols = new byte[307200];
             int last_symbol = 0;
+
+            ffmpegReader.send_webcam_data = webcam_bool;
+            ffmpegReader.tx_byte_range = byte_range;
+
             try
             {
                 // T2.1 - Configure NIFGEN
@@ -87,6 +97,8 @@ namespace NIMultiThreadConsole
                 double NIFGEN_gain = 1.0;
                 double NIFGEN_offset = 0.0;
 
+                double[] waveform;
+                double t_end = 0;
                 nifgen_initiated = false;
                 waveform_handle = 0;
                 
@@ -104,17 +116,20 @@ namespace NIMultiThreadConsole
 
                 // T2.2 - Initialize parameters for reading from ffmpeg buffer
                 byte[] d;
-                bool read_zeros;
+                bool read_zeros = false;
+                bool old_read_zeros = true;
+                bool add_barker = true;
                 int prev_write_end = 0;
                 int last_checked = 0;
                 int n_cycle = 1;
+                double[] bark = { 1, 1, 1, 1, 1, -1, -1, 1, 1, -1, 1, -1, 1 };
                 // T2.3- Initialize Matlab instance
-                mtx.create_matlab_instance("C:\\Users\\Gizem\\Box\\Research\\Projects\\MeatComms\\Experiments\\C#");
+                mtx.create_matlab_instance("C:\\Users\\Gizem\\source\\repos\\NIMultiThreadConsole\\NIMultiThreadConsole");
                 mtx.initalize_tx_params(M, fsym_tx, fs_tx, fc);
                 
                 Debug.WriteLine("Matlab Initialized");
-
-                var watch = System.Diagnostics.Stopwatch.StartNew();
+                
+                // var watch = System.Diagnostics.Stopwatch.StartNew();
 
                 while (true)
                 {
@@ -126,7 +141,8 @@ namespace NIMultiThreadConsole
                         niFgenObj.SetInt32(niFgenProperties.StreamingWaveformHandle, waveform_handle);
                         niFgenObj.ConfigureArbWaveform(NIFGEN_CHANNEL_NAME, waveform_handle, NIFGEN_gain, NIFGEN_offset);
                         niFgenObj.ConfigureOutputEnabled(NIFGEN_CHANNEL_NAME, true);
-
+                        nifgen_configured = true;
+                        add_barker = true;
                         // niFgenObj.WriteWaveform(NIFGEN_CHANNEL_NAME, waveform_handle, waveform.Length, waveform);
                         // total_sent += waveform.Length;
                         // Debug.WriteLine("[NIFGEN] First waveform written, length {0}.", waveform.Length);
@@ -138,37 +154,47 @@ namespace NIMultiThreadConsole
                     }
 
                     // T2.4 - Read from FFMPEG buffer
-                    watch.Restart();
-                    d = ffmpegReader.read_from_buffer(ref prev_write_end, ref last_checked, ref n_cycle);
+                    // watch.Restart();
+                    old_read_zeros = read_zeros;
+                    d = ffmpegReader.read_from_buffer(ref prev_write_end, ref last_checked, ref n_cycle, out read_zeros);
                     
-                    watch.Stop();
-                    double[] waveform;
-                    if (d.Length == ffmpegReader.EMPTY_LENGTH)
+                    // watch.Stop();
+
+                    if (read_zeros)//((d.Length == ffmpegReader.EMPTY_LENGTH) && !(ffmpegReader.EMPTY_LENGTH == last_checked - prev_write_end + 1))
                     {
                         waveform = new double[(int)(ffmpegReader.EMPTY_LENGTH * (8 / M) * (fs_tx / fsym_tx))];
-                        read_zeros = true;
+                        if (!old_read_zeros)
+                        {
+                            Buffer.BlockCopy(bark, 0, waveform, (int)(fs_tx / fsym_tx) * sizeof(double), bark.Length * sizeof(double));
+                        }
+                        add_barker = true;
+                        
+                        // read_zeros = true;
                     }
                     else
                     {
-                        Buffer.BlockCopy(d, 0, nifgen_symbols, last_symbol, d.Length);
-                        last_symbol += d.Length;
+                        
                         // Debug.WriteLine("read_from_buffer Execution Time: {0} ms = {1} ticks = {2} samples/tick", watch.ElapsedMilliseconds, watch.ElapsedTicks, (d.Length * (8 / M) * (fs_tx / fsym_tx)) / watch.ElapsedTicks);
                         // Debug.WriteLine("[ML] Bytes read from FFMPEG. Length = {0} bytes, = {1} samples", d.Length, d.Length * (8 / M) * (fs_tx / fsym_tx));
                         // T2.5 - Use Matlab script to generate TX data
                         // watch.Restart();
-                        mtx.generate_tx_data(d, max_waveform_size);
+                        // double[] output_data;
+                        waveform = mtx.generate_tx_data(d, add_barker, max_waveform_size, ref t_end);
+                        // File.WriteAllLines("DEBUG_d", d.Select(x => x.ToString()));
+
+                        Buffer.BlockCopy(d, 0, nifgen_symbols, last_symbol, d.Length );
+                        last_symbol += d.Length;
                         // watch.Stop();
                         // Debug.WriteLine("generate_tx_data Execution Time: {0} ms = {1} ticks", watch.ElapsedMilliseconds, watch.ElapsedTicks);
 
                         // watch.Restart();
-                        var len = mtx.output_data.GetLength(1);
-                        waveform = new double[len];
-                        Buffer.BlockCopy(mtx.output_data, 0, waveform, 0, len * sizeof(double));
+                        
                         // watch.Stop();
                         // Debug.WriteLine("Convert array Execution Time: {0} ms = {1} ticks", watch.ElapsedMilliseconds, watch.ElapsedTicks);
 
                         // Debug.WriteLine("[ML] TX data generated");
                         read_zeros = false;
+                        add_barker = false;
                     }
                     
                     // T2.6 - Send that data to AWG with NIFGEN
@@ -177,9 +203,11 @@ namespace NIMultiThreadConsole
                     {
                         // During generation, the available space may be in multiple locations with, for example, part of the available space at the end of the streaming waveform and the rest at the beginning. 
                         // In this situation, writing a block of waveform data the size of the total space available in the streaming waveform causes NI-FGEN to return an error, as NI-FGEN will not wrap the data from the end of the waveform to the beginning and cannot write data past the end of the waveform buffer. 
-                        watch.Restart();
+
+                        // watch.Restart();
+                        // niFgenObj.SetWaveformNextWritePosition(NIFGEN_CHANNEL_NAME, waveform_handle, 1, total_sent);
                         niFgenObj.WriteWaveform(NIFGEN_CHANNEL_NAME, waveform_handle, waveform.Length, waveform);
-                        watch.Stop();
+                        // watch.Stop();
                         // Debug.WriteLine("[NIFGEN] Waveform #{0} is written, length {1}, took {2} ms = {3} ticks", write_cnt, waveform.Length, watch.ElapsedMilliseconds, watch.ElapsedTicks);
                         // Debug.WriteLine("Write Execution Time: {0} ms = {1} ticks", watch.ElapsedMilliseconds, watch.ElapsedTicks);
 
@@ -187,18 +215,20 @@ namespace NIMultiThreadConsole
                     }
                     else
                     {
-                        if (nifgen_initiated == false)
+                        if ((nifgen_initiated == false) )
                         {
                             nifgen_initiated = true;
                             niFgenObj.InitiateGeneration();
                             Debug.WriteLine("Initiated");
                         }
+                        
                         // Write to the beginning of the waveform
                         // relativeTo: 0-current, 1-beginning
+                        // total_sent = 0;
+                        // watch.Restart();
                         niFgenObj.SetWaveformNextWritePosition(NIFGEN_CHANNEL_NAME, waveform_handle, 1, 0);
-                        watch.Restart();
                         niFgenObj.WriteWaveform(NIFGEN_CHANNEL_NAME, waveform_handle, waveform.Length, waveform);
-                        watch.Stop();
+                        // watch.Stop();
                         // Debug.WriteLine("Write buffer is full. Moving to the beginning.");
                         // Debug.WriteLine("Write Execution Time: {0} ms = {1} ticks", watch.ElapsedMilliseconds, watch.ElapsedTicks);
 
@@ -206,29 +236,66 @@ namespace NIMultiThreadConsole
                     }
                     if (read_zeros)
                     {
-                        Debug.WriteLine("[NIFGEN] Waveform #{0} 0s written, length {1}, took {2} ms = {3} ticks", write_cnt, waveform.Length, watch.ElapsedMilliseconds, watch.ElapsedTicks);
+                        // Debug.WriteLine("[NIFGEN] Waveform #{0} 0s written, length {1}, took {2} ms = {3} ticks", write_cnt, waveform.Length, watch.ElapsedMilliseconds, watch.ElapsedTicks);
+                        // Debug.WriteLine("[NIFGEN] Waveform #{0} 0s written, length {1}, total {2}", write_cnt, waveform.Length, total_sent);
+                        Debug.WriteLine("[NIFGEN] 0s written {0}", waveform.Length);
                     }
                     else
                     {
-                        Debug.WriteLine("[NIFGEN] Waveform #{0} is written, length {1}, took {2} ms = {3} ticks", write_cnt, waveform.Length, watch.ElapsedMilliseconds, watch.ElapsedTicks);
+                        // niFgenObj.InitiateGeneration();
+                        // Debug.WriteLine("Initiated");
+                        Debug.WriteLine("[NIFGEN] data written {0}", waveform.Length);
+                        // Debug.WriteLine("[NIFGEN] Waveform #{0} is written, length {1}, total {2}", write_cnt, waveform.Length, total_sent);
+                        // break;
+                        // if (nifgen_initiated)
+                        // {
+                        //     Debug.WriteLine("[NIFGEN] Writing debugs");
+                        //     File.WriteAllLines("DEBUG_d.txt", d.Select(x => x.ToString()));
+                        //     File.WriteAllLines("DEBUG_waveform.txt", waveform.Select(x => x.ToString()));
+                        //     throw new System.Exception("[NIFGEN] Wrote debugs");
+                        // }
+                        
                     }
                     
                     write_cnt += 1;
                 }
+                // Debug.WriteLine("[NIFGEN] The last waveform written #{0}", write_cnt);
+                Debug.WriteLine("[NIFGEN] Writing debugs");
+                // File.WriteAllLines("DEBUG_d.txt", d.Select(x => x.ToString()));
+                string tx_file_name = "tx_debug_fc" + fc.ToString() + "_fsym_tx" + fsym_tx.ToString() + "_fs_tx" + fs_tx.ToString() + "_fs_rx" + fs_rx.ToString() + "_webcam" + (webcam_bool ? 1 : 0).ToString() + "_tx_range" + byte_range.ToString() + ".txt";
+                int tx_file_ctr = 1;
+                string tx_new_file_name;
+                do
+                {
+                    tx_new_file_name = tx_file_ctr.ToString() + tx_file_name;
+                    tx_file_ctr += 1;
+                } while (File.Exists(tx_new_file_name));
+
+                File.WriteAllLines(tx_new_file_name, waveform.Select(x => x.ToString()));
+                throw new System.Exception("[NIFGEN] Exiting NIFGEN");
                 
             }
             catch (Exception e)
             {
                 Debug.WriteLine("[NIFGEN] The last waveform written #{0}", write_cnt);
                 Debug.WriteLine("Exception caught {0}", e);
+                // Write tx symbols
+                string tx_file_name = "tx_symbols_fc" + fc.ToString() + "_fsym_tx" + fsym_tx.ToString() + "_fs_tx" + fs_tx.ToString() + "_fs_rx" + fs_rx.ToString() + "_webcam" + (webcam_bool ? 1 : 0).ToString() + "_tx_range" + byte_range.ToString() + ".txt";
+                int tx_file_ctr = 1;
+                string tx_new_file_name;
+                do
+                {
+                    tx_new_file_name = tx_file_ctr.ToString() + tx_file_name;
+                    tx_file_ctr += 1;
+                } while (File.Exists(tx_new_file_name));
 
-                
-
+                File.WriteAllLines(tx_new_file_name, nifgen_symbols.Select(x => x.ToString()));
+                // stop_execution(niFgenObj, niMT2.niScopeObj);
             }
         }
         public void stop_execution(niFgen niFgenObj, niScope niScopeObj)
         {
-
+            
             niFgenObj.AbortGeneration();
             Debug.WriteLine("[NIFGEN] Generation aborted.");
             niFgenObj.ClearArbMemory();
@@ -240,26 +307,6 @@ namespace NIMultiThreadConsole
             niScopeObj.Dispose();
             Debug.WriteLine("[NISCOPE] Successfully disposed.");
             
-        }
-
-        public void write_results()
-        {
-            // write rx signal
-            string file_name = "rx_waveform_fc" + fc.ToString() + "_fsym_tx" + fsym_tx.ToString() + "_fs_tx" + fs_tx.ToString() + "_fs_rx" + fs_rx.ToString() + ".txt";
-            int file_ctr = 1;
-            string new_file_name;
-            do
-            {
-                new_file_name = file_ctr.ToString() + file_name;
-                file_ctr += 1;
-            } while (File.Exists(new_file_name));
-
-            File.WriteAllLines(new_file_name, niMT2.niscope_data.Select(d => d.ToString()));
-            // Write tx symbols
-            file_ctr -= 1;
-            string tx_file_name = "tx_symbols_fc" + fc.ToString() + "_fsym_tx" + fsym_tx.ToString() + "_fs_tx" + fs_tx.ToString() + "_fs_rx" + fs_rx.ToString() + ".txt";
-            string tx_new_file_name = file_ctr.ToString() + tx_file_name;
-            File.WriteAllLines(tx_new_file_name, niMT.nifgen_symbols.Select(d => d.ToString()));
         }
         public void RXThread()
         {
@@ -279,7 +326,7 @@ namespace NIMultiThreadConsole
 
             // Horizontal properties of the acquisition
             int NISCOPE_min_record_length = 1000; // default = 1000
-            double NISCOPE_ref_position = 0.5; // default = 50%
+            double NISCOPE_ref_position = 0; // default = 50%
 
             // Trigger  properties
             double NISCOPE_trigger_holdoff = 0;
@@ -288,60 +335,196 @@ namespace NIMultiThreadConsole
             // Fetch parameters
             int NISCOPE_max_per_fetch;
             double NISCOPE_timeout = 0;
-            // short[] waveform16;
-            double[] waveformD;
+            short[] waveform16;
+            // double[] waveformD;
+            short[] niscope_data;
+            short[] niscope_all_data;
+            // double[] niscope_data;
             niScopeWfmInfo[] waveform_info = new niScopeWfmInfo[NISCOPE_num_waveform];
 
 
             int cnt_acq = 1;
+            
+            
+            niScopeObj = new niScope(NISCOPE_resource_name, true, true);
+            niScopeObj.AutoSetup();
+            Debug.WriteLine("[NISCOPE] Auto setup");
+            niScopeObj.ConfigureVertical(NISCOPE_channel_name, NISCOPE_vertical_range, NISCOPE_vertical_offset, NISCOPE_coupling, NISCOPE_probe_attenuation, true);
+            Debug.WriteLine("[NISCOPE] Configured vertical");
+            niScopeObj.ConfigureChanCharacteristics(NISCOPE_channel_name, NISCOPE_impedance, NISCOPE_sample_rate);
+            Debug.WriteLine("[NISCOPE] Configured channel char");
+            niScopeObj.ConfigureHorizontalTiming(NISCOPE_sample_rate, NISCOPE_min_record_length, NISCOPE_ref_position, NISCOPE_num_waveform, true);
+            Debug.WriteLine("[NISCOPE] Configured horixontal");
+            niScopeObj.ConfigureTriggerSoftware(NISCOPE_trigger_holdoff, NISCOPE_trigger_delay);
+            Debug.WriteLine("[NISCOPE] Configured trigger");
+            niScopeObj.SetInt32(niScopeProperties.FetchRelativeTo, niScopeConstants.ReadPointer);
+            Debug.WriteLine(niScopeObj.GetInt32(niScopeProperties.FetchRelativeTo));
+            int mem = niScopeObj.GetInt32(niScopeProperties.OnboardMemorySize);
+            Debug.WriteLine("[NISCOPE] Available memory {0}", mem);
+            NISCOPE_max_per_fetch = (int) mem / 16;
+            Debug.WriteLine("[NISCOPE] Max per fetch {0}", NISCOPE_max_per_fetch);
+            // waveform16 = new short[NISCOPE_max_per_fetch];
+            // waveformD = new double[NISCOPE_max_per_fetch];
+            niscope_data = new short[(int)mem / 4];
+            niscope_all_data = new short[(int)mem / 4];
+            // niscope_data = new double[(int)mem / 4];
+            Debug.WriteLine("[NISCOPE] Circular buffer length {0}", niscope_data.Length);
+            int last_write = 0;
+            int last_all_write = 0;
             var watch2 = System.Diagnostics.Stopwatch.StartNew();
+            // watch2.Restart();
+            // while (watch2.ElapsedMilliseconds < 1000) ;
+            // watch2.Stop();
+            while (!(nifgen_configured)) ;
             try
             {
-                niScopeObj = new niScope(NISCOPE_resource_name, true, true);
-                niScopeObj.AutoSetup();
-                Debug.WriteLine("[NISCOPE] Auto setup");
-                niScopeObj.ConfigureVertical(NISCOPE_channel_name, NISCOPE_vertical_range, NISCOPE_vertical_offset, NISCOPE_coupling, NISCOPE_probe_attenuation, true);
-                Debug.WriteLine("[NISCOPE] Configured vertical");
-                niScopeObj.ConfigureChanCharacteristics(NISCOPE_channel_name, NISCOPE_impedance, NISCOPE_sample_rate);
-                Debug.WriteLine("[NISCOPE] Configured channel char");
-                niScopeObj.ConfigureHorizontalTiming(NISCOPE_sample_rate, NISCOPE_min_record_length, NISCOPE_ref_position, NISCOPE_num_waveform, true);
-                Debug.WriteLine("[NISCOPE] Configured horixontal");
-                niScopeObj.ConfigureTriggerSoftware(NISCOPE_trigger_holdoff, NISCOPE_trigger_delay);
-                Debug.WriteLine("[NISCOPE] Configured trigger");
-                niScopeObj.SetInt32(niScopeProperties.FetchRelativeTo, niScopeConstants.ReadPointer);
-                int mem = niScopeObj.GetInt32(niScopeProperties.OnboardMemorySize);
-                Debug.WriteLine("[NISCOPE] Available memory {0}", mem);
-                NISCOPE_max_per_fetch = (int) mem / 16;
-                Debug.WriteLine("[NISCOPE] Max per fetch {0}", NISCOPE_max_per_fetch);
-                // waveform16 = new short[NISCOPE_max_per_fetch];
-                waveformD = new double[NISCOPE_max_per_fetch];
-                niscope_data = new double[(int)mem / 4];
-                Debug.WriteLine("[NISCOPE] Circular buffer length {0}", niscope_data.Length);
-                int last_write = 0;
-                watch2.Restart();
-                while (watch2.ElapsedMilliseconds < 1500) ;
-                watch2.Stop();
                 // Thread.Sleep(400);
                 // while (!(niMT.nifgen_initiated)) ;
                 niScopeObj.InitiateAcquisition();
                 Debug.WriteLine("[NISCOPE] Initiated scope.");
-                niscope_initiated = true;
+                // niscope_initiated = true;
                 var watch_total = System.Diagnostics.Stopwatch.StartNew();
+                int[] corr_array = {1,  1,  1 , 1 , 1 , -1 , -1 ,  1 , 1,  -1 , 1,  -1 , 1 };
+                double barker_th = 5.0 * NISCOPE_vertical_range / 4.0;
+                int corr_length = corr_array.Length;
+                int n_guard = (int)(fs_rx / fsym_tx);
+                int n_prev = 2 * corr_length + n_guard;
+                short[] x_rec_prev = new short[n_prev];
+                bool data_started = false;
+                bool data_ended = true;
+                bool data_started_here;
+                int prev_data_count = 0;
+                double fetch_gain;
+                double fetch_offset;
+                double fetch_gain_prev = 0;
+                double fetch_offset_prev = 0;
+                double corr_first_old = 0;
+                double corr_end_old = 0;
+                int corr_first_peak_idx = 0;
+                int corr_end_peak_idx = -(2 * corr_length + n_guard);
+                double corr_first;
+                double corr_end;
+                int i_end;
+                
                 while (true)
                 {
-                    watch2.Restart();
-                    niScopeObj.Fetch(NISCOPE_channel_name, NISCOPE_timeout, NISCOPE_max_per_fetch, waveformD, waveform_info);
-                    // niScopeObj.FetchBinary16(NISCOPE_channel_name, NISCOPE_timeout, NISCOPE_max_per_fetch, waveform16, waveform_info);
-                    watch2.Stop();
-                    Debug.WriteLine("[NISCOPE] Fetched waveform #{0}, length {1}, took {2} ticks", cnt_acq, waveform_info[0].ActualSamples, watch2.ElapsedTicks);
+                    data_started_here = false;
+                    // watch2.Restart();
+                    // niScopeObj.Fetch(NISCOPE_channel_name, NISCOPE_timeout, NISCOPE_max_per_fetch, waveformD, waveform_info);
+                    waveform16 = new short[NISCOPE_max_per_fetch];
+                    niScopeObj.FetchBinary16(NISCOPE_channel_name, NISCOPE_timeout, NISCOPE_max_per_fetch, waveform16, waveform_info);
+                    // watch2.Stop();
+                    // Debug.WriteLine("[NISCOPE] Fetched {0}", waveform_info[0].ActualSamples);
+                    // Debug.WriteLine("[NISCOPE] Fetched waveform #{0}, length {1}, took {2} ticks, gain {3}", cnt_acq, waveform_info[0].ActualSamples, watch2.ElapsedTicks, waveform_info[0].Gain);
                     cnt_acq += 1;
                     try
                     {
                         // watch2.Restart();
-                        Buffer.BlockCopy(waveformD, 0, niscope_data, last_write, waveform_info[0].ActualSamples);
-                        last_write += waveform_info[0].ActualSamples;
+                        // Buffer.BlockCopy(waveformD, 0, niscope_data, last_write, waveform_info[0].ActualSamples * sizeof(double));
+                        // last_write += waveform_info[0].ActualSamples * sizeof(double);
                         // watch2.Stop();
                         // Debug.WriteLine("[NISCOPE] Wrote to buffer. Took {0} ticks.", watch2.ElapsedTicks);
+                        fetch_gain   = waveform_info[0].Gain;
+                        fetch_offset = waveform_info[0].Offset;
+                        for (int i = 0; i < waveform_info[0].ActualSamples - 2 * corr_length - n_guard; i++)
+                        {
+                            corr_first = 0;
+                            corr_end = 0;
+                            i_end = i + corr_length + n_guard + 1;
+                            for (int j = 0; j < corr_length; j++) 
+                            {
+                                if (data_started)
+                                {
+                                    if (i_end + j < n_prev)
+                                    {
+                                        corr_end += ((x_rec_prev[i_end + j] - fetch_offset_prev) * fetch_gain_prev) * corr_array[j];
+                                    }
+                                    else
+                                    {
+                                        corr_end += ((waveform16[i_end + j - n_prev] - fetch_offset) * fetch_gain) * corr_array[j];
+                                    }
+                                }
+                                else if (data_ended && (i > (corr_end_peak_idx + 2 * corr_length + n_guard)))
+                                {
+                                    if (i + j < n_prev)
+                                    {
+                                        corr_first += ((x_rec_prev[i + j] - fetch_offset_prev) * fetch_gain_prev) * corr_array[j];
+                                    }
+                                    else
+                                    {
+                                        corr_first += ((waveform16[i + j - n_prev] - fetch_offset) * fetch_gain) * corr_array[j];
+                                    }
+                                }
+                                
+                            }
+                            
+                            if (data_started)
+                            {
+                                if ((corr_end > barker_th))
+                                {/*
+                                    // Cross correlation exceeded threshold
+                                    if (corr_end > corr_end_old)
+                                    {
+                                        // Correlation is still increasing
+                                        corr_end_old = corr_end;
+                                    }
+                                    else
+                                    {*/
+                                        // We reached correlation peak in the previous sample
+                                        Debug.WriteLine("Data ended {0}", i);
+                                        data_ended = true;
+                                        data_started = false;
+                                        corr_end_old = 0;
+                                        corr_end_peak_idx = i;
+                                    // }
+                                }
+                            }
+                            else if (data_ended && (i > (corr_end_peak_idx + 2 * corr_length + n_guard)))
+                            {
+                                if ((corr_first > barker_th))
+                                {
+                                    /*// Cross correlation exceeded threshold
+                                    if (corr_first > corr_first_old)
+                                    {
+                                        // Correlation is still increasing
+                                        corr_first_old = corr_first;
+                                    }
+                                    else
+                                    {*/
+                                    Debug.WriteLine("Data started {0} threshold {1} corr {2}", i, barker_th, corr_first);
+                                        // We reached correlation peak in the previous sample
+                                        corr_first_peak_idx = i;
+                                        data_started = true;
+                                        data_started_here = true;
+                                        data_ended = false;
+                                        corr_first_old = 0;
+
+                                    // }
+                                }
+                            }
+
+                            if (!data_ended && ((data_started && !data_started_here) || (data_started && data_started_here && (i > corr_first_peak_idx + n_guard + (int)(corr_length / 2)))))
+                            {
+                                if (i < n_prev)
+                                {
+                                    niscope_data[last_write] = x_rec_prev[i];
+                                }
+                                else
+                                {
+                                    niscope_data[last_write] = waveform16[i];
+                                }
+                                
+                                last_write += 1;
+                            }
+                        }
+                        Buffer.BlockCopy(waveform16, (waveform_info[0].ActualSamples - 2 * corr_length - n_guard) * sizeof(short), x_rec_prev, 0, n_prev * sizeof(short));
+
+                        Debug.WriteLine("[NISCOPE] Fetched {0}, total looked at {1}, exceeding threshold {2}", waveform_info[0].ActualSamples, waveform_info[0].ActualSamples - corr_length + 1, last_write - prev_data_count);
+                        prev_data_count = last_write;
+                        fetch_gain_prev = fetch_gain;
+                        fetch_offset_prev = fetch_offset;
+                        Buffer.BlockCopy(waveform16, 0, niscope_all_data, last_all_write, waveform_info[0].ActualSamples * sizeof(short));
+                        last_all_write += waveform_info[0].ActualSamples * sizeof(short);
                     }
                     catch (Exception e)
                     {
@@ -375,14 +558,23 @@ namespace NIMultiThreadConsole
             catch (Exception e)
             {
                 Debug.WriteLine("[NISCOPE] Exception caught {0}", e);
-                write_results();
-                stop_execution(niMT.niFgenObj, niScopeObj);
 
-                Process ffplayProcess;
-                ffmpegReader.FFPLAYStart(out ffplayProcess);
-                ffmpegReader.send_data_to_ffplay(niMT.nifgen_symbols);
-                
-                
+                // write rx signal
+                string file_name = "rx_waveform_fc" + fc.ToString() + "_fsym_tx" + fsym_tx.ToString() + "_fs_tx" + fs_tx.ToString() + "_fs_rx" + fs_rx.ToString() +  "_webcam" + (webcam_bool ? 1 : 0).ToString() + "_tx_range" + byte_range.ToString() + ".txt";
+                int file_ctr = 1;
+                string new_file_name;
+                do
+                {
+                    new_file_name = file_ctr.ToString() + file_name;
+                    file_ctr += 1;
+                } while (File.Exists(new_file_name));
+
+                File.WriteAllLines(new_file_name, niscope_data.Select(d => d.ToString()));
+                string file_name2 = "rx_all_waveform_fc" + fc.ToString() + "_fsym_tx" + fsym_tx.ToString() + "_fs_tx" + fs_tx.ToString() + "_fs_rx" + fs_rx.ToString() + "_webcam" + (webcam_bool ? 1 : 0).ToString() + "_tx_range" + byte_range.ToString() + ".txt";
+                string new_file_name2 = (file_ctr-1).ToString() + file_name2;
+                File.WriteAllLines(new_file_name2, niscope_all_data.Select(d => d.ToString()));
+
+                stop_execution(niFgenObj, niScopeObj);
                 // niScopeObj.Abort();
                 // Debug.WriteLine("[NISCOPE] Acquisition aborted.");
                 // niScopeObj.Dispose();
