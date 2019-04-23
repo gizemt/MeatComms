@@ -1,4 +1,4 @@
-input_data = [0, 1, 2, 3, 4, 5, 6, 7, 8, 0, 1, 2, 3, 4, 1, 8; 3:7, 2:8, 0:3];
+input_data = x_dec;%[0, 1, 2, 3, 4, 5, 6, 7, 8, 0, 1, 2, 3, 4, 1, 8; 3:7, 2:8, 0:3];
 M = 2;
 fsym_tx = 1e5;
 fs_tx = 5e6;
@@ -6,19 +6,20 @@ fs_rx = fs_tx;
 fc = 13e5;
 excess_output = [];
 t_end = 0;
-max_waveform_size = 6000;
+max_waveform_size = 6000000;
+first_start = 0;
 [Ts_tx,sps_tx, qammod_lookup_real, qammod_lookup_imag, rc_filt_tx] = initialize_NIMultiThread_MATLAB_TX(M, fsym_tx, fs_tx);
 set_aside_real = zeros(1,(length(rc_filt_tx)-1));
 set_aside_imag = zeros(1,(length(rc_filt_tx)-1));
 
 output_data = [];
-for i = 1:2
-[output_data1, excess_output, set_aside_real, set_aside_imag, t_end] = NIMultiThread_MATLAB_TX(input_data(i,:), M, Ts_tx,sps_tx, fc, qammod_lookup_real, qammod_lookup_imag, rc_filt_tx,  excess_output, set_aside_real, set_aside_imag, t_end, max_waveform_size);
-output_data = [output_data, output_data1];
-end
+% for i = 1:2
+% [output_data1, excess_output, set_aside_real, set_aside_imag, t_end] = NIMultiThread_MATLAB_TX(input_data(i,:), M, Ts_tx,sps_tx, fc, qammod_lookup_real, qammod_lookup_imag, rc_filt_tx, first_start,  excess_output, set_aside_real, set_aside_imag, t_end, max_waveform_size);
+% output_data = [output_data, output_data1];
+% end
 % figure,plot(output_data);hold on;plot(output_data(1:end-length(output_data1)));    
 
-[output_data_full, excess_output_full, set_aside_real_full, set_aside_imag_full, t_end_full] = NIMultiThread_MATLAB_TX([input_data(1,:),input_data(2,:)] , M, Ts_tx,sps_tx, fc, qammod_lookup_real, qammod_lookup_imag, rc_filt_tx,  [], zeros(1,length(set_aside_real)), zeros(1,length(set_aside_imag)), 0, max_waveform_size);
+[output_data_full, excess_output_full, set_aside_real_full, set_aside_imag_full, t_end_full] = NIMultiThread_MATLAB_TX(input_data , M, Ts_tx,sps_tx, fc, qammod_lookup_real, qammod_lookup_imag, rc_filt_tx, first_start,  [], zeros(1,length(set_aside_real)), zeros(1,length(set_aside_imag)), 0, max_waveform_size);
 figure,plot(output_data_full);hold on;plot(output_data);hold on;plot(output_data(1:end-length(output_data1))); 
 legend('Full', '2-parts', 'only first');
 %     

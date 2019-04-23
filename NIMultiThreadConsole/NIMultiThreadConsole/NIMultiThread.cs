@@ -385,15 +385,18 @@ namespace NIMultiThreadConsole
                 // niscope_initiated = true;
                 var watch_total = System.Diagnostics.Stopwatch.StartNew();
                 int[] corr_array = {1,  1,  1 , 1 , 1 , -1 , -1 ,  1 , 1,  -1 , 1,  -1 , 1 };
-                double barker_th = 5.0 * NISCOPE_vertical_range / 4.0;
+                double barker_th = 5.0 * NISCOPE_vertical_range / 2.0;
                 int corr_length = corr_array.Length;
                 int n_guard = (int)(fs_rx / fsym_tx);
-                int n_prev = 2 * corr_length + n_guard;
+                int n_ahead = n_guard;
+                int n_prev = n_ahead + corr_length + 1; 
                 short[] x_rec_prev = new short[n_prev];
                 bool data_started = false;
                 bool data_ended = true;
                 bool data_started_here;
-                int prev_data_count = 0;
+                int prev_written_count = 0;
+                int total_fetched = 0;
+                int local_fetched;
                 double fetch_gain;
                 double fetch_offset;
                 double fetch_gain_prev = 0;
@@ -401,7 +404,7 @@ namespace NIMultiThreadConsole
                 double corr_first_old = 0;
                 double corr_end_old = 0;
                 int corr_first_peak_idx = 0;
-                int corr_end_peak_idx = -(2 * corr_length + n_guard);
+                int corr_end_peak_idx = -(n_ahead + 1);
                 double corr_first;
                 double corr_end;
                 int i_end;
@@ -426,11 +429,12 @@ namespace NIMultiThreadConsole
                         // Debug.WriteLine("[NISCOPE] Wrote to buffer. Took {0} ticks.", watch2.ElapsedTicks);
                         fetch_gain   = waveform_info[0].Gain;
                         fetch_offset = waveform_info[0].Offset;
-                        for (int i = 0; i < waveform_info[0].ActualSamples - 2 * corr_length - n_guard; i++)
+                        local_fetched = waveform_info[0].ActualSamples;
+                        for (int i = 0; i < local_fetched; i++)
                         {
                             corr_first = 0;
                             corr_end = 0;
-                            i_end = i + corr_length + n_guard + 1;
+                            i_end = i + n_ahead;
                             for (int j = 0; j < corr_length; j++) 
                             {
                                 if (data_started)
@@ -444,7 +448,7 @@ namespace NIMultiThreadConsole
                                         corr_end += ((waveform16[i_end + j - n_prev] - fetch_offset) * fetch_gain) * corr_array[j];
                                     }
                                 }
-                                else if (data_ended && (i > (corr_end_peak_idx + 2 * corr_length + n_guard)))
+                                else if (data_ended && (i > (corr_end_peak_idx + n_ahead)))
                                 {
                                     if (i + j < n_prev)
                                     {
@@ -479,7 +483,7 @@ namespace NIMultiThreadConsole
                                     // }
                                 }
                             }
-                            else if (data_ended && (i > (corr_end_peak_idx + 2 * corr_length + n_guard)))
+                            else if (data_ended && (i > (corr_end_peak_idx + n_ahead)))
                             {
                                 if ((corr_first > barker_th))
                                 {
@@ -503,7 +507,7 @@ namespace NIMultiThreadConsole
                                 }
                             }
 
-                            if (!data_ended && ((data_started && !data_started_here) || (data_started && data_started_here && (i > corr_first_peak_idx + n_guard + (int)(corr_length / 2)))))
+                            if (!data_ended && ((data_started && !data_started_here) || (data_started && data_started_here && (i > corr_first_peak_idx + n_guard + corr_length - 1))))
                             {
                                 if (i < n_prev)
                                 {
@@ -511,20 +515,21 @@ namespace NIMultiThreadConsole
                                 }
                                 else
                                 {
-                                    niscope_data[last_write] = waveform16[i];
+                                    niscope_data[last_write] = waveform16[i - n_prev];
                                 }
                                 
                                 last_write += 1;
                             }
                         }
-                        Buffer.BlockCopy(waveform16, (waveform_info[0].ActualSamples - 2 * corr_length - n_guard) * sizeof(short), x_rec_prev, 0, n_prev * sizeof(short));
-
-                        Debug.WriteLine("[NISCOPE] Fetched {0}, total looked at {1}, exceeding threshold {2}", waveform_info[0].ActualSamples, waveform_info[0].ActualSamples - corr_length + 1, last_write - prev_data_count);
-                        prev_data_count = last_write;
+                        Buffer.BlockCopy(waveform16, (local_fetched - n_prev) * sizeof(short), x_rec_prev, 0, n_prev * sizeof(short));
+                        total_fetched += local_fetched;
+                        Debug.WriteLine("[NISCOPE] Total fetched {0}, local fetched {1}, exceeding threshold {2} data started? {3} data ended? {4}", total_fetched, local_fetched - corr_length + 1, last_write - prev_written_count, data_started, data_ended);
+                        prev_written_count = last_write;
                         fetch_gain_prev = fetch_gain;
                         fetch_offset_prev = fetch_offset;
-                        Buffer.BlockCopy(waveform16, 0, niscope_all_data, last_all_write, waveform_info[0].ActualSamples * sizeof(short));
-                        last_all_write += waveform_info[0].ActualSamples * sizeof(short);
+                        Buffer.BlockCopy(waveform16, 0, niscope_all_data, last_all_write, local_fetched * sizeof(short));
+                        last_all_write += local_fetched * sizeof(short);
+                        corr_end_peak_idx = 0;
                     }
                     catch (Exception e)
                     {
