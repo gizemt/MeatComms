@@ -67,7 +67,7 @@ namespace NIMultiThreadConsole
             ProcessStartInfo ffmpegStartInfo = new ProcessStartInfo();
             ffmpegStartInfo.FileName = "C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe";
             // ffmpegStartInfo.Arguments = "-y -f dshow -framerate 10 -i video=\"Logitech Webcam C925e\" -vf scale=160:120 -vcodec h264 -an -f nut pipe:1";
-            ffmpegStartInfo.Arguments = "-y -f dshow -framerate 10 -i video=\"Logitech Webcam C925e\" -vf scale=960:720 -vcodec h264 -an -f nut pipe:1";
+            ffmpegStartInfo.Arguments = "-y -f dshow -framerate 30 -i video=\"Logitech Webcam C925e\" -vf scale=960:720 -vcodec h264 -an -f nut pipe:1";
             
             ffmpegStartInfo.RedirectStandardError = false; // FFMPEG progress updates
             ffmpegStartInfo.RedirectStandardOutput = true; // FFMPEG data

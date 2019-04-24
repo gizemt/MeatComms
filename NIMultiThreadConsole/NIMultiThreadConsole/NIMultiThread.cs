@@ -18,22 +18,28 @@ namespace NIMultiThreadConsole
         static Thread threadFFMPEG;
         static Thread threadTX;
         static Thread threadRX;
+        static Thread threadRX_matlab;
         static FFMPEGReader ffmpegReader;// = new FFMPEGReader();
         static MatlabTXRX mtx;
+        static MatlabTXRX mtx2;
 
         static bool nifgen_configured = false;
+        static bool niscope_ended = false;
 
-        static double M = 2;
+        static double M = 4;
         static double fsym_tx = 1e5;
         static double fs_tx = 5e6;
         static double fc = 13e5;
         static double fs_rx = 5e6;
 
         
+        static short[] rx_data_buffer = new short[524288 * 4];
+        static int rx_data_buffer_last_write;
+        
         public static bool webcam_bool = true;
         public static int byte_range = 0;
 
-        
+        static Stopwatch RXwatch = new Stopwatch();
         
 
         bool nifgen_initiated;
@@ -64,6 +70,14 @@ namespace NIMultiThreadConsole
                 threadRX = new Thread(() => niMT2.RXThread());
                 threadRX.Start();
                 Debug.WriteLine("threadRX started");
+
+                mtx2 = new MatlabTXRX();
+                threadRX_matlab = new Thread(() => niMT2.RXMatlabThread());
+                threadRX_matlab.Start();
+                Debug.WriteLine("threadRXMATLAB started");
+
+                threadRX_matlab.Join();
+                stop_execution(niFgenObj, niScopeObj);
 
                 
             }
@@ -131,7 +145,7 @@ namespace NIMultiThreadConsole
                 
                 // var watch = System.Diagnostics.Stopwatch.StartNew();
 
-                while (true)
+                while (!(niscope_ended))
                 {
                     if (write_cnt == 0)
                     {
@@ -271,16 +285,23 @@ namespace NIMultiThreadConsole
                     tx_file_ctr += 1;
                 } while (File.Exists(tx_new_file_name));
 
-                File.WriteAllLines(tx_new_file_name, waveform.Select(x => x.ToString()));
+                // File.WriteAllLines(tx_new_file_name, waveform.Select(x => x.ToString()));
                 throw new System.Exception("[NIFGEN] Exiting NIFGEN");
                 
-            }
+            }   
             catch (Exception e)
             {
                 Debug.WriteLine("[NIFGEN] The last waveform written #{0}", write_cnt);
                 Debug.WriteLine("Exception caught {0}", e);
+                niFgenObj.AbortGeneration();
+                Debug.WriteLine("[NIFGEN] Generation aborted.");
+                niFgenObj.ClearArbMemory();
+                Debug.WriteLine("[NIFGEN] Memory cleared.");
+                niFgenObj.Dispose();
+                Debug.WriteLine("[NIFGEN] Successfully disposed.");
                 // Write tx symbols
-                string tx_file_name = "tx_symbols_fc" + fc.ToString() + "_fsym_tx" + fsym_tx.ToString() + "_fs_tx" + fs_tx.ToString() + "_fs_rx" + fs_rx.ToString() + "_webcam" + (webcam_bool ? 1 : 0).ToString() + "_tx_range" + byte_range.ToString() + ".txt";
+                /*
+                 * string tx_file_name = "tx_symbols_fc" + fc.ToString() + "_fsym_tx" + fsym_tx.ToString() + "_fs_tx" + fs_tx.ToString() + "_fs_rx" + fs_rx.ToString() + "_webcam" + (webcam_bool ? 1 : 0).ToString() + "_tx_range" + byte_range.ToString() + ".txt";
                 int tx_file_ctr = 1;
                 string tx_new_file_name;
                 do
@@ -290,10 +311,11 @@ namespace NIMultiThreadConsole
                 } while (File.Exists(tx_new_file_name));
 
                 File.WriteAllLines(tx_new_file_name, nifgen_symbols.Select(x => x.ToString()));
+                 * */
                 // stop_execution(niFgenObj, niMT2.niScopeObj);
             }
         }
-        public void stop_execution(niFgen niFgenObj, niScope niScopeObj)
+        public static void stop_execution(niFgen niFgenObj, niScope niScopeObj)
         {
             
             niFgenObj.AbortGeneration();
@@ -337,8 +359,8 @@ namespace NIMultiThreadConsole
             double NISCOPE_timeout = 0;
             short[] waveform16;
             // double[] waveformD;
-            short[] niscope_data;
-            short[] niscope_all_data;
+            // short[] niscope_data;
+            // short[] niscope_all_data;
             // double[] niscope_data;
             niScopeWfmInfo[] waveform_info = new niScopeWfmInfo[NISCOPE_num_waveform];
 
@@ -365,11 +387,11 @@ namespace NIMultiThreadConsole
             Debug.WriteLine("[NISCOPE] Max per fetch {0}", NISCOPE_max_per_fetch);
             // waveform16 = new short[NISCOPE_max_per_fetch];
             // waveformD = new double[NISCOPE_max_per_fetch];
-            niscope_data = new short[(int)mem / 4];
-            niscope_all_data = new short[(int)mem / 4];
+            // niscope_data = new short[(int)mem / 4];
+            // niscope_all_data = new short[(int)mem / 4];
             // niscope_data = new double[(int)mem / 4];
-            Debug.WriteLine("[NISCOPE] Circular buffer length {0}", niscope_data.Length);
-            int last_write = 0;
+            // Debug.WriteLine("[NISCOPE] Circular buffer length {0}", niscope_data.Length);
+            // int last_write = 0;
             int last_all_write = 0;
             var watch2 = System.Diagnostics.Stopwatch.StartNew();
             // watch2.Restart();
@@ -408,13 +430,16 @@ namespace NIMultiThreadConsole
                 double corr_first;
                 double corr_end;
                 int i_end;
-                
-                while (true)
+                int rx_data_buffer_length = rx_data_buffer.Length;
+                int ctr = 0;
+
+                while (ctr < rx_data_buffer_length - 1)
                 {
                     data_started_here = false;
                     // watch2.Restart();
                     // niScopeObj.Fetch(NISCOPE_channel_name, NISCOPE_timeout, NISCOPE_max_per_fetch, waveformD, waveform_info);
                     waveform16 = new short[NISCOPE_max_per_fetch];
+                    RXwatch.Start();
                     niScopeObj.FetchBinary16(NISCOPE_channel_name, NISCOPE_timeout, NISCOPE_max_per_fetch, waveform16, waveform_info);
                     // watch2.Stop();
                     // Debug.WriteLine("[NISCOPE] Fetched {0}", waveform_info[0].ActualSamples);
@@ -511,23 +536,26 @@ namespace NIMultiThreadConsole
                             {
                                 if (i < n_prev)
                                 {
-                                    niscope_data[last_write] = x_rec_prev[i];
+                                    // niscope_data[last_write] = x_rec_prev[i];
+                                    rx_data_buffer[rx_data_buffer_last_write] = x_rec_prev[i];
                                 }
                                 else
                                 {
-                                    niscope_data[last_write] = waveform16[i - n_prev];
+                                    // niscope_data[last_write] = waveform16[i - n_prev];
+                                    rx_data_buffer[rx_data_buffer_last_write] =  waveform16[i - n_prev];
                                 }
                                 
-                                last_write += 1;
+                                rx_data_buffer_last_write += 1;
                             }
                         }
                         Buffer.BlockCopy(waveform16, (local_fetched - n_prev) * sizeof(short), x_rec_prev, 0, n_prev * sizeof(short));
                         total_fetched += local_fetched;
-                        Debug.WriteLine("[NISCOPE] Total fetched {0}, local fetched {1}, exceeding threshold {2} data started? {3} data ended? {4}", total_fetched, local_fetched - corr_length + 1, last_write - prev_written_count, data_started, data_ended);
-                        prev_written_count = last_write;
+                        Debug.WriteLine("[NISCOPE] Total fetched {0}, local fetched {1}, exceeding threshold {2} data started? {3} data ended? {4}", total_fetched, local_fetched - corr_length + 1, rx_data_buffer_last_write - prev_written_count, data_started, data_ended);
+                        prev_written_count = rx_data_buffer_last_write;
+                        ctr = rx_data_buffer_last_write;
                         fetch_gain_prev = fetch_gain;
                         fetch_offset_prev = fetch_offset;
-                        Buffer.BlockCopy(waveform16, 0, niscope_all_data, last_all_write, local_fetched * sizeof(short));
+                        // Buffer.BlockCopy(waveform16, 0, niscope_all_data, last_all_write, local_fetched * sizeof(short));
                         last_all_write += local_fetched * sizeof(short);
                         corr_end_peak_idx = 0;
                     }
@@ -535,7 +563,7 @@ namespace NIMultiThreadConsole
                     {
                         watch_total.Stop();
                         Debug.WriteLine("[NISCOPE] Rethrowing exception {0}", e);
-                        Debug.WriteLine("[NISCOPE] Last write {0}", last_write);
+                        Debug.WriteLine("[NISCOPE] Last write {0}", rx_data_buffer_last_write);
                         Debug.WriteLine("[NISCOPE] Totalruntime {0}", watch_total.ElapsedTicks);
 
                         // string file_name = "rx_waveform_fc" + fc.ToString() + "_fsym_tx" + fsym_tx.ToString() + "_fs_tx" + fs_tx.ToString() + "_fs_rx" + fs_rx.ToString() + ".txt";
@@ -563,9 +591,14 @@ namespace NIMultiThreadConsole
             catch (Exception e)
             {
                 Debug.WriteLine("[NISCOPE] Exception caught {0}", e);
+                niScopeObj.Abort();
+                Debug.WriteLine("[NISCOPE] Acquisition aborted.");
+                niScopeObj.Dispose();
+                Debug.WriteLine("[NISCOPE] Successfully disposed.");
+                niscope_ended = true;
 
                 // write rx signal
-                string file_name = "rx_waveform_fc" + fc.ToString() + "_fsym_tx" + fsym_tx.ToString() + "_fs_tx" + fs_tx.ToString() + "_fs_rx" + fs_rx.ToString() +  "_webcam" + (webcam_bool ? 1 : 0).ToString() + "_tx_range" + byte_range.ToString() + ".txt";
+                /* string file_name = "rx_waveform_fc" + fc.ToString() + "_fsym_tx" + fsym_tx.ToString() + "_fs_tx" + fs_tx.ToString() + "_fs_rx" + fs_rx.ToString() +  "_webcam" + (webcam_bool ? 1 : 0).ToString() + "_tx_range" + byte_range.ToString() + ".txt";
                 int file_ctr = 1;
                 string new_file_name;
                 do
@@ -574,25 +607,45 @@ namespace NIMultiThreadConsole
                     file_ctr += 1;
                 } while (File.Exists(new_file_name));
 
-                File.WriteAllLines(new_file_name, niscope_data.Select(d => d.ToString()));
+                // File.WriteAllLines(new_file_name, niscope_data.Select(d => d.ToString()));
                 string file_name2 = "rx_all_waveform_fc" + fc.ToString() + "_fsym_tx" + fsym_tx.ToString() + "_fs_tx" + fs_tx.ToString() + "_fs_rx" + fs_rx.ToString() + "_webcam" + (webcam_bool ? 1 : 0).ToString() + "_tx_range" + byte_range.ToString() + ".txt";
                 string new_file_name2 = (file_ctr-1).ToString() + file_name2;
-                File.WriteAllLines(new_file_name2, niscope_all_data.Select(d => d.ToString()));
-
+                // File.WriteAllLines(new_file_name2, niscope_all_data.Select(d => d.ToString()));
+                
                 stop_execution(niFgenObj, niScopeObj);
-                // niScopeObj.Abort();
-                // Debug.WriteLine("[NISCOPE] Acquisition aborted.");
-                // niScopeObj.Dispose();
-                // Debug.WriteLine("[NISCOPE] Successfully disposed.");
-                // niFgenObj.AbortGeneration();
-                // Debug.WriteLine("[NIFGEN] Generation aborted.");
-                // niFgenObj.ClearArbMemory();
-                // Debug.WriteLine("[NIFGEN] Memory cleared.");
-                // niFgenObj.Dispose();
-                // Debug.WriteLine("[NIFGEN] Successfully disposed.");
+                 * */
             }
             
 
+        }
+
+        public void RXMatlabThread()
+        {
+            double[,] matlab_out;
+            mtx2.create_matlab_instance("C:\\Users\\Gizem\\source\\repos\\NIMultiThreadConsole\\NIMultiThreadConsole");
+            mtx2.initalize_tx_params(M, fsym_tx, fs_tx, fc);
+            mtx2.initalize_rx_params(M, fsym_tx, fs_rx, fc);
+            int blw;
+            while ((blw = rx_data_buffer_last_write) < 250000);
+            Debug.WriteLine("[NISCOPE-MATLAB] Starting copying & processing");
+            short[] x_rec = new short[blw];
+            Buffer.BlockCopy(rx_data_buffer, 0, x_rec, 0, (blw) * sizeof(short));
+            byte[] x_n = {0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 2, 1, 1};
+            double nsym_train = 10; 
+            double Frac = 2; 
+            double N1 = 2;
+            double N2 = 4;
+            double Kf1 = 5e-4;  
+            double Kf2 = 8e-5;
+            double Kg1 = 1e-11; 
+            double Kg2 = 1e-12; 
+            double lambda = 0.997;
+            RXwatch.Stop();
+            Debug.WriteLine("[NISCOPE-MATLAB] Starting processing. Time until now {0} ms", RXwatch.ElapsedMilliseconds);
+            RXwatch.Start();
+            matlab_out = mtx2.process_rx_data(x_rec, x_n, nsym_train, Frac, N1, N2, Kf1, Kf2, Kg1, Kg2, lambda);
+            RXwatch.Stop();
+            Debug.WriteLine("[NISCOPE-MATLAB] Processed {0} samples. Output {1} bytes. Total time {2} ms", blw, matlab_out.Length, RXwatch.ElapsedMilliseconds);
         }
 
     }

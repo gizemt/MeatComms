@@ -16,12 +16,16 @@ namespace NIMultiThreadConsole
         double M;
         double fsym_tx;
         double fs_tx;
+        double fs_rx;
         double fc;
         double Ts_tx;              
         double sps_tx         ;    
         double[] qammod_lookup_real ;
         double[] qammod_lookup_imag ;
         double[] rc_filt_tx;
+
+        double[] b_butter;
+        double[] a_butter;
         
         // int max_waveform_size;
 
@@ -164,6 +168,47 @@ namespace NIMultiThreadConsole
             t_end = (double)tx_out_obj[4];
             // Debug.WriteLine(t_end);
             return output_data;
+
+        }
+
+        public void initalize_rx_params(double M, double fsym_tx, double fs_rx, double fc)
+        {
+            this.M = M;
+            this.fsym_tx = fsym_tx;
+            this.fs_rx = fs_rx;
+            this.fc = fc;
+            
+            object res = null;
+            matlab.Feval("initialize_NIMultiThread_MATLAB_RX", 2, out res, fs_rx, fsym_tx);
+            object[] rx_out_obj = res as object[];
+            double[,] bb = (double[,])rx_out_obj[0];
+            double[,] ab = (double[,])rx_out_obj[1];
+            this.b_butter = new double[bb.GetLength(1)];
+            this.a_butter = new double[ab.GetLength(1)];
+            Buffer.BlockCopy(bb, 0, b_butter, 0, b_butter.Length * sizeof(double));
+            Buffer.BlockCopy(ab, 0, a_butter, 0, a_butter.Length * sizeof(double));
+        }
+        public double[,] process_rx_data(short[] x_rec, byte[] x_n, double nsym_train, double Frac, double N1, double N2, double Kf1, double Kf2, double Kg1, double Kg2, double lambda)
+        {
+            object res = null;
+            double[,] od;
+            // frame_vec_dfe = NIMultiThread_MATLAB_RX_Loop(x_rec, x_n, M, fc, fsym, fs_rx, nsym_train, Frac, b_butter, a_butter, N1, N2, Kf1, Kf2, Kg1, Kg2, lambda)
+            // try
+            // {
+                matlab.Feval("NIMultiThread_MATLAB_RX_Loop", 1, out res, x_rec, x_n, this.M, this.fc, this.fsym_tx, this.fs_rx, nsym_train, Frac, this.b_butter, this.a_butter, N1, N2, Kf1, Kf2, Kg1, Kg2, lambda);
+                object[] rx_data_out = res as object[];
+                
+                od = (double[,])rx_data_out[0];
+            // }
+            // catch (Exception e)
+            // {
+            //     Debug.WriteLine(e.Message);
+            //     Debug.WriteLine(e.Source);
+            //     od = null;
+            //     throw e;
+            // }
+            
+            return od;
 
         }
 
